@@ -1,0 +1,26 @@
+@startuml
+skinparam defaultFontName Courier
+
+class Program {
+  + Main(args: string[]): Task<int>
+  - CreateHostBuilder(args: string[], config: IConfiguration, env: string): IHostBuilder
+  - ExecuteJobAsync(host: IHost, jobName: string, env: string): Task<int>
+  - GetArgument(args: string[], name: string): string?
+}
+
+class JobFactory {
+  + CreateJob(jobName: string, env: string): IJob
+}
+
+interface IJob {
+  + JobName: string
+  + ExecuteAsync(): Task<bool>
+}
+
+Program -> JobFactory : uses (DI)
+Program -> IJob : creates via JobFactory\nand executes
+Program ..> IConfiguration : builds config
+Program ..> ILogger : logs via Serilog
+Program ..> OpenTelemetry : tracing
+Program ..> Elastic.Apm : APM transaction
+@enduml

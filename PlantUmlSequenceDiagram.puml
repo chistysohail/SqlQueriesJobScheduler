@@ -1,0 +1,31 @@
+@startuml
+skinparam defaultFontName Courier
+
+actor User
+participant Program
+participant ConfigurationBuilder as Cfg
+participant Serilog as Log
+participant Host
+participant JobFactory
+participant IJob
+participant OpenTelemetry as OTEL
+participant ElasticApm as APM
+
+User -> Program: Main(args)
+Program -> Program: GetArgument(--job/--env)
+Program -> Cfg: Build configuration
+Program -> Log: Configure Serilog
+Program -> Program: CreateHostBuilder(...)
+Program -> Host: Build()
+Program -> Program: ExecuteJobAsync(...)
+Program -> JobFactory: CreateJob(jobName, env)
+JobFactory --> Program: IJob
+Program -> OTEL: Start Activity
+Program -> APM: Start Transaction (if configured)
+Program -> IJob: ExecuteAsync()
+IJob --> Program: success/fail
+Program -> OTEL: Set status/attributes
+Program -> APM: Set result/End
+Program -> Log: Log completion/exit code
+Program --> User: return exit code
+@enduml
