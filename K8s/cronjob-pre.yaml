@@ -1,0 +1,138 @@
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: sqlqueryjob-pre
+  namespace: default
+  labels:
+    app: jobscheduler
+    job: sqlqueryjob
+    environment: pre
+spec:
+  # Run daily at midnight (00:00 UTC)
+  schedule: "0 0 * * *"
+  
+  # Timezone support (requires Kubernetes 1.25+)
+  # timeZone: "America/New_York"
+  
+  # Keep last 3 successful and 1 failed job for debugging
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 1
+  
+  # Concurrency policy: Forbid prevents overlapping runs
+  concurrencyPolicy: Forbid
+  
+  # Job will be considered failed if not completed within 1 hour
+  startingDeadlineSeconds: 3600
+  
+  jobTemplate:
+    metadata:
+      labels:
+        app: jobscheduler
+        job: sqlqueryjob
+        environment: pre
+    spec:
+      # Backoff limit for pod retries
+      backoffLimit: 2
+      
+      # Active deadline for job execution (30 minutes)
+      activeDeadlineSeconds: 1800
+      
+      template:
+        metadata:
+          labels:
+            app: jobscheduler
+            job: sqlqueryjob
+            environment: pre
+          annotations:
+            # Elastic APM annotations
+            co.elastic.logs/enabled: "true"
+            co.elastic.metrics/enabled: "true"
+        spec:
+          restartPolicy: Never
+          
+          # Service account (if needed for Azure AD authentication)
+          # serviceAccountName: jobscheduler-sa
+          
+          containers:
+          - name: jobscheduler
+            image: your-acr.azurecr.io/jobscheduler:latest
+            imagePullPolicy: Always
+            
+            # Command arguments
+            args:
+              - "--job"
+              - "SqlQueryJob"
+              - "--env"
+              - "PRE"
+            
+            # Environment variables
+            env:
+            - name: DOTNET_ENVIRONMENT
+              value: "Production"
+            - name: ASPNETCORE_ENVIRONMENT
+              value: "Production"
+            
+            # Elastic APM environment variables
+            - name: ELASTIC_APM_SERVER_URL
+              valueFrom:
+                secretKeyRef:
+                  name: jobscheduler-secrets-pre
+                  key: ELASTIC_APM_SERVER_URL
+            - name: ELASTIC_APM_SECRET_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: jobscheduler-secrets-pre
+                  key: ELASTIC_APM_SECRET_TOKEN
+            - name: ELASTIC_APM_SERVICE_NAME
+              value: "JobScheduler"
+            - name: ELASTIC_APM_ENVIRONMENT
+              value: "PRE"
+            
+            # OpenTelemetry environment variables
+            - name: OTEL_EXPORTER_OTLP_ENDPOINT
+              valueFrom:
+                secretKeyRef:
+                  name: jobscheduler-secrets-pre
+                  key: OTEL_EXPORTER_OTLP_ENDPOINT
+                  optional: true
+            
+            # Volume mounts
+            volumeMounts:
+            - name: config
+              mountPath: /app/appsettings.Production.json
+              subPath: appsettings.Production.json
+            - name: job-config
+              mountPath: /app/Configuration/PRE/SqlQueryJob.json
+              subPath: SqlQueryJob.json
+            
+            # Resource limits
+            resources:
+              requests:
+                memory: "256Mi"
+                cpu: "100m"
+              limits:
+                memory: "512Mi"
+                cpu: "500m"
+            
+            # Security context
+            securityContext:
+              allowPrivilegeEscalation: false
+              runAsNonRoot: true
+              runAsUser: 1000
+              capabilities:
+                drop:
+                  - ALL
+              readOnlyRootFilesystem: false
+          
+          # Volumes
+          volumes:
+          - name: config
+            configMap:
+              name: jobscheduler-config-pre
+          - name: job-config
+            configMap:
+              name: jobscheduler-sqlqueryjob-pre
+          
+          # Image pull secrets (if using private ACR)
+          imagePullSecrets:
+          - name: acr-secret

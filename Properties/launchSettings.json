@@ -1,0 +1,8 @@
+{
+  "profiles": {
+    "JobScheduler": {
+      "commandName": "Project",
+      "commandLineArgs": "--job SqlQueryJob --env PRE"
+    }
+  }
+}

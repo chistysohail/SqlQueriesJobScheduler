@@ -1,0 +1,138 @@
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: sqlqueryjob-prd
+  namespace: production
+  labels:
+    app: jobscheduler
+    job: sqlqueryjob
+    environment: prd
+spec:
+  # Run daily at midnight (00:00 UTC)
+  schedule: "0 0 * * *"
+  
+  # Timezone support (requires Kubernetes 1.25+)
+  # timeZone: "America/New_York"
+  
+  # Keep last 5 successful and 3 failed jobs for debugging
+  successfulJobsHistoryLimit: 5
+  failedJobsHistoryLimit: 3
+  
+  # Concurrency policy: Forbid prevents overlapping runs
+  concurrencyPolicy: Forbid
+  
+  # Job will be considered failed if not completed within 1 hour
+  startingDeadlineSeconds: 3600
+  
+  jobTemplate:
+    metadata:
+      labels:
+        app: jobscheduler
+        job: sqlqueryjob
+        environment: prd
+    spec:
+      # Backoff limit for pod retries
+      backoffLimit: 3
+      
+      # Active deadline for job execution (1 hour)
+      activeDeadlineSeconds: 3600
+      
+      template:
+        metadata:
+          labels:
+            app: jobscheduler
+            job: sqlqueryjob
+            environment: prd
+          annotations:
+            # Elastic APM annotations
+            co.elastic.logs/enabled: "true"
+            co.elastic.metrics/enabled: "true"
+        spec:
+          restartPolicy: Never
+          
+          # Service account (if needed for Azure AD authentication)
+          # serviceAccountName: jobscheduler-sa
+          
+          containers:
+          - name: jobscheduler
+            image: your-acr.azurecr.io/jobscheduler:latest
+            imagePullPolicy: Always
+            
+            # Command arguments
+            args:
+              - "--job"
+              - "SqlQueryJob"
+              - "--env"
+              - "PRD"
+            
+            # Environment variables
+            env:
+            - name: DOTNET_ENVIRONMENT
+              value: "Production"
+            - name: ASPNETCORE_ENVIRONMENT
+              value: "Production"
+            
+            # Elastic APM environment variables
+            - name: ELASTIC_APM_SERVER_URL
+              valueFrom:
+                secretKeyRef:
+                  name: jobscheduler-secrets-prd
+                  key: ELASTIC_APM_SERVER_URL
+            - name: ELASTIC_APM_SECRET_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: jobscheduler-secrets-prd
+                  key: ELASTIC_APM_SECRET_TOKEN
+            - name: ELASTIC_APM_SERVICE_NAME
+              value: "JobScheduler"
+            - name: ELASTIC_APM_ENVIRONMENT
+              value: "PRD"
+            
+            # OpenTelemetry environment variables
+            - name: OTEL_EXPORTER_OTLP_ENDPOINT
+              valueFrom:
+                secretKeyRef:
+                  name: jobscheduler-secrets-prd
+                  key: OTEL_EXPORTER_OTLP_ENDPOINT
+                  optional: true
+            
+            # Volume mounts
+            volumeMounts:
+            - name: config
+              mountPath: /app/appsettings.Production.json
+              subPath: appsettings.Production.json
+            - name: job-config
+              mountPath: /app/Configuration/PRD/SqlQueryJob.json
+              subPath: SqlQueryJob.json
+            
+            # Resource limits (higher for production)
+            resources:
+              requests:
+                memory: "512Mi"
+                cpu: "200m"
+              limits:
+                memory: "1Gi"
+                cpu: "1000m"
+            
+            # Security context
+            securityContext:
+              allowPrivilegeEscalation: false
+              runAsNonRoot: true
+              runAsUser: 1000
+              capabilities:
+                drop:
+                  - ALL
+              readOnlyRootFilesystem: false
+          
+          # Volumes
+          volumes:
+          - name: config
+            configMap:
+              name: jobscheduler-config-prd
+          - name: job-config
+            configMap:
+              name: jobscheduler-sqlqueryjob-prd
+          
+          # Image pull secrets (if using private ACR)
+          imagePullSecrets:
+          - name: acr-secret

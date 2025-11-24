@@ -1,0 +1,64 @@
+{
+  "JobName": "SqlQueryJob",
+  "Description": "Executes daily SQL queries against Azure SQL Database - PRODUCTION",
+  "Enabled": true,
+  "TimeoutSeconds": 600,
+  "RetryCount": 3,
+  "RetryDelayMs": 10000,
+  "ConnectionString": "Server=(localdb)\\MSSQLLocalDB;Database=Prices;Integrated Security=True;TrustServerCertificate=True;",
+  "UseTransaction": false,
+  "CommandTimeoutSeconds": 120,
+  "Queries": [
+    {
+      "Name": "Query1_UpdateDailyStats",
+      "CommandText": "UPDATE DailyStats SET ProcessedDate = GETDATE() WHERE Date = @TargetDate",
+      "Parameters": {
+        "TargetDate": "{{TODAY}}"
+      },
+      "IsStoredProcedure": false,
+      "LogResultCount": true
+    },
+    {
+      "Name": "Query2_CleanupOldRecords",
+      "CommandText": "DELETE FROM TempData WHERE CreatedDate < DATEADD(day, -30, GETDATE())",
+      "Parameters": {},
+      "IsStoredProcedure": false,
+      "LogResultCount": true
+    },
+    {
+      "Name": "Query3_AggregateMetrics",
+      "CommandText": "INSERT INTO MetricsAggregate (Date, TotalCount, AvgValue) SELECT CAST(GETDATE() AS DATE), COUNT(*), AVG(Value) FROM Metrics WHERE Date = @TargetDate",
+      "Parameters": {
+        "TargetDate": "{{TODAY}}"
+      },
+      "IsStoredProcedure": false,
+      "LogResultCount": true
+    },
+    {
+      "Name": "Query4_ExecuteStoredProc",
+      "CommandText": "sp_ProcessDailyData",
+      "Parameters": {
+        "ProcessDate": "{{TODAY}}",
+        "BatchSize": 5000
+      },
+      "IsStoredProcedure": true,
+      "LogResultCount": false
+    },
+    {
+      "Name": "Query5_UpdateStatus",
+      "CommandText": "UPDATE JobStatus SET LastRunDate = GETDATE(), Status = 'Completed' WHERE JobName = @JobName",
+      "Parameters": {
+        "JobName": "SqlQueryJob"
+      },
+      "IsStoredProcedure": false,
+      "LogResultCount": true
+    },
+    {
+      "Name": "Query6_ArchiveData",
+      "CommandText": "INSERT INTO DataArchive SELECT * FROM DataCurrent WHERE ProcessedDate < DATEADD(day, -7, GETDATE())",
+      "Parameters": {},
+      "IsStoredProcedure": false,
+      "LogResultCount": true
+    }
+  ]
+}

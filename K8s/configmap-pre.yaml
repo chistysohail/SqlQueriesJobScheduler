@@ -1,0 +1,90 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: jobscheduler-config-pre
+  namespace: default
+data:
+  appsettings.Production.json: |
+    {
+      "Serilog": {
+        "MinimumLevel": {
+          "Default": "Information"
+        }
+      },
+      "ElasticApm": {
+        "Environment": "PRE",
+        "Enabled": true
+      }
+    }
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: jobscheduler-sqlqueryjob-pre
+  namespace: default
+data:
+  SqlQueryJob.json: |
+    {
+      "JobName": "SqlQueryJob",
+      "Description": "Executes daily SQL queries against Azure SQL Database",
+      "Enabled": true,
+      "TimeoutSeconds": 300,
+      "RetryCount": 2,
+      "RetryDelayMs": 5000,
+      "ConnectionString": "",
+      "UseTransaction": false,
+      "CommandTimeoutSeconds": 60,
+      "Queries": [
+        {
+          "Name": "Query1_UpdateDailyStats",
+          "CommandText": "UPDATE DailyStats SET ProcessedDate = GETDATE() WHERE Date = @TargetDate",
+          "Parameters": {
+            "TargetDate": "{{TODAY}}"
+          },
+          "IsStoredProcedure": false,
+          "LogResultCount": true
+        },
+        {
+          "Name": "Query2_CleanupOldRecords",
+          "CommandText": "DELETE FROM TempData WHERE CreatedDate < DATEADD(day, -30, GETDATE())",
+          "Parameters": {},
+          "IsStoredProcedure": false,
+          "LogResultCount": true
+        },
+        {
+          "Name": "Query3_AggregateMetrics",
+          "CommandText": "INSERT INTO MetricsAggregate (Date, TotalCount, AvgValue) SELECT CAST(GETDATE() AS DATE), COUNT(*), AVG(Value) FROM Metrics WHERE Date = @TargetDate",
+          "Parameters": {
+            "TargetDate": "{{TODAY}}"
+          },
+          "IsStoredProcedure": false,
+          "LogResultCount": true
+        },
+        {
+          "Name": "Query4_ExecuteStoredProc",
+          "CommandText": "sp_ProcessDailyData",
+          "Parameters": {
+            "ProcessDate": "{{TODAY}}",
+            "BatchSize": 1000
+          },
+          "IsStoredProcedure": true,
+          "LogResultCount": false
+        },
+        {
+          "Name": "Query5_UpdateStatus",
+          "CommandText": "UPDATE JobStatus SET LastRunDate = GETDATE(), Status = 'Completed' WHERE JobName = @JobName",
+          "Parameters": {
+            "JobName": "SqlQueryJob"
+          },
+          "IsStoredProcedure": false,
+          "LogResultCount": true
+        },
+        {
+          "Name": "Query6_ArchiveData",
+          "CommandText": "INSERT INTO DataArchive SELECT * FROM DataCurrent WHERE ProcessedDate < DATEADD(day, -7, GETDATE())",
+          "Parameters": {},
+          "IsStoredProcedure": false,
+          "LogResultCount": true
+        }
+      ]
+    }
